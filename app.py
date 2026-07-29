@@ -1,23 +1,32 @@
 import os
 import pickle
 import numpy as np
-from flask import Flask, render_template_string, request
+from flask import Flask, render_template_string, request, jsonify
 
 app = Flask(__name__)
 
-# File name as uploaded
-MODEL_FILENAME = 'AdaBoost_model_model.pkl'
-MODEL_PATH = os.path.join(os.path.dirname(__file__), MODEL_FILENAME)
-
 # Load the trained AdaBoost model
-try:
-    with open(MODEL_PATH, 'rb') as f:
-        model = pickle.load(f)
-except Exception as e:
-    model = None
-    print(f"Error loading model from {MODEL_PATH}: {e}")
+MODEL_PATH = "Adaboost_model.pkl"
+model = None
 
-# HTML + CSS Template embedded directly inside app.py
+if os.path.exists(MODEL_PATH):
+    with open(MODEL_PATH, "rb") as f:
+        model = pickle.load(f)
+else:
+    print(f"Warning: '{MODEL_PATH}' not found. Please place it in the same directory.")
+
+# Feature names identified from your model file:
+# 1. Age (Numeric)
+# 2. Gender (0 = Female, 1 = Male)
+# 3. Tenure (Numeric - Months)
+# 4. Usage Frequency (Numeric - Times/Month)
+# 5. Support Calls (Numeric)
+# 6. Payment Delay (Numeric - Days)
+# 7. Subscription Type (0 = Basic, 1 = Standard, 2 = Premium)
+# 8. Contract Length (0 = Monthly, 1 = Quarterly, 2 = Annual)
+# 9. Total Spend (Numeric - USD)
+# 10. Last Interaction (Numeric - Days)
+
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -25,63 +34,63 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Customer Churn Predictor</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-main: #0b1329;
-            --card-bg: #1e293b;
-            --input-bg: #0f172a;
-            --border-color: #334155;
-            --primary-accent: #3b82f6;
-            --primary-hover: #2563eb;
-            --emerald-accent: #10b981;
-            --danger-accent: #ef4444;
-            --text-primary: #f8fafc;
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --text-main: #f8fafc;
             --text-muted: #94a3b8;
+            --input-bg: rgba(15, 23, 42, 0.6);
+            --danger-glow: rgba(239, 68, 68, 0.2);
+            --success-glow: rgba(34, 197, 94, 0.2);
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-family: 'Inter', sans-serif;
         }
 
         body {
-            background: radial-gradient(circle at top right, #1e293b, #0b1329 70%);
-            color: var(--text-primary);
+            background: var(--bg-gradient);
+            color: var(--text-main);
             min-height: 100vh;
             display: flex;
-            align-items: center;
             justify-content: center;
+            align-items: center;
             padding: 2rem 1rem;
         }
 
         .container {
             width: 100%;
-            max-width: 880px;
+            max-width: 900px;
             background: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 20px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
-            overflow: hidden;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
 
         .header {
-            background: linear-gradient(135deg, #1e293b, #0f172a);
-            padding: 2.5rem 2rem;
             text-align: center;
-            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 2rem;
         }
 
         .header h1 {
-            font-size: 2rem;
+            font-size: 2.2rem;
             font-weight: 700;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(to right, #60a5fa, #34d399);
+            background: linear-gradient(to right, #a7f3d0, #38bdf8, #818cf8);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
         }
 
         .header p {
@@ -89,13 +98,9 @@ HTML_TEMPLATE = """
             font-size: 0.95rem;
         }
 
-        form {
-            padding: 2rem;
-        }
-
-        .grid-container {
+        .form-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
             gap: 1.25rem;
         }
 
@@ -106,102 +111,95 @@ HTML_TEMPLATE = """
         }
 
         .input-group label {
-            font-size: 0.8rem;
-            font-weight: 600;
+            font-size: 0.85rem;
+            font-weight: 500;
             color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.02em;
         }
 
-        .input-wrapper {
-            position: relative;
-            display: flex;
-            align-items: center;
-        }
-
-        .input-wrapper i {
-            position: absolute;
-            left: 1rem;
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
-
-        .input-wrapper input,
-        .input-wrapper select {
+        .input-group input, .input-group select {
             width: 100%;
-            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            padding: 0.75rem 1rem;
             background: var(--input-bg);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--card-border);
             border-radius: 10px;
-            color: var(--text-primary);
+            color: var(--text-main);
             font-size: 0.95rem;
             outline: none;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            transition: all 0.3s ease;
         }
 
-        .input-wrapper input:focus,
-        .input-wrapper select:focus {
-            border-color: var(--emerald-accent);
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+        .input-group input:focus, .input-group select:focus {
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
         }
 
-        .btn-submit {
-            margin-top: 2rem;
-            width: 100%;
+        .input-group select option {
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+
+        .submit-btn {
+            grid-column: 1 / -1;
+            margin-top: 1rem;
             padding: 1rem;
-            background: linear-gradient(135deg, #10b981, #059669);
+            background: var(--accent-gradient);
             border: none;
-            border-radius: 10px;
-            color: white;
+            border-radius: 12px;
+            color: #ffffff;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             transition: transform 0.2s ease, box-shadow 0.2s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
         }
 
-        .btn-submit:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.4);
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
         }
 
-        .result-card {
-            margin: 2rem 2rem 0;
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        .result-container {
+            margin-top: 2rem;
             padding: 1.5rem;
-            border-radius: 12px;
+            border-radius: 16px;
             text-align: center;
-            animation: fadeIn 0.4s ease-in-out;
+            display: none;
+            animation: fadeIn 0.4s ease forwards;
         }
 
-        .result-card.churn {
-            background: rgba(239, 68, 68, 0.12);
+        .result-container.show {
+            display: block;
+        }
+
+        .result-container.churn {
+            background: rgba(239, 68, 68, 0.15);
             border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #fca5a5;
+            box-shadow: 0 0 25px var(--danger-glow);
         }
 
-        .result-card.retained {
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: #6ee7b7;
+        .result-container.no-churn {
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            box-shadow: 0 0 25px var(--success-glow);
         }
 
         .result-title {
-            font-size: 1.25rem;
+            font-size: 1.4rem;
             font-weight: 700;
-            margin-bottom: 0.25rem;
+            margin-bottom: 0.5rem;
         }
 
-        .error-card {
-            margin: 2rem 2rem 0;
-            padding: 1rem;
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid var(--danger-accent);
-            border-radius: 10px;
-            color: #fca5a5;
-            text-align: center;
+        .result-container.churn .result-title { color: #f87171; }
+        .result-container.no-churn .result-title { color: #4ade80; }
+
+        .result-desc {
+            font-size: 0.95rem;
+            color: var(--text-muted);
         }
 
         @keyframes fadeIn {
@@ -212,185 +210,166 @@ HTML_TEMPLATE = """
 </head>
 <body>
 
-    <div class="container">
-        <div class="header">
-            <h1><i class="fa-solid fa-chart-pie"></i> Customer Churn Intelligence</h1>
-            <p>AdaBoost Classification & Risk Prediction Model</p>
-        </div>
-
-        {% if error %}
-        <div class="error-card">
-            <i class="fa-solid fa-triangle-exclamation"></i> {{ error }}
-        </div>
-        {% endif %}
-
-        {% if prediction is defined %}
-        <div class="result-card {{ 'churn' if prediction == 1 else 'retained' }}">
-            <div class="result-title">
-                {% if prediction == 1 %}
-                    <i class="fa-solid fa-user-xmark"></i> High Risk: Customer Likely to Churn
-                {% else %}
-                    <i class="fa-solid fa-user-check"></i> Low Risk: Customer Likely Retained
-                {% endif %}
-            </div>
-            {% if probability %}
-            <p>Confidence: <strong>{{ probability }}%</strong></p>
-            {% endif %}
-        </div>
-        {% endif %}
-
-        <form action="/" method="POST">
-            <div class="grid-container">
-                
-                <div class="input-group">
-                    <label>Age</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-user"></i>
-                        <input type="number" name="age" step="1" min="18" max="100" required value="{{ form_data.age if form_data else '' }}" placeholder="e.g. 35">
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Gender</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-venus-mars"></i>
-                        <select name="gender" required>
-                            <option value="0" {% if form_data and form_data.gender == '0' %}selected{% endif %}>Female</option>
-                            <option value="1" {% if form_data and form_data.gender == '1' %}selected{% endif %}>Male</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Tenure (Months)</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-calendar-days"></i>
-                        <input type="number" name="tenure" step="1" min="0" required value="{{ form_data.tenure if form_data else '' }}" placeholder="e.g. 12">
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Usage Frequency</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-chart-line"></i>
-                        <input type="number" name="usage_frequency" step="1" min="0" required value="{{ form_data.usage_frequency if form_data else '' }}" placeholder="e.g. 15">
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Support Calls</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-headset"></i>
-                        <input type="number" name="support_calls" step="1" min="0" required value="{{ form_data.support_calls if form_data else '' }}" placeholder="e.g. 2">
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Payment Delay (Days)</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-clock"></i>
-                        <input type="number" name="payment_delay" step="1" min="0" required value="{{ form_data.payment_delay if form_data else '' }}" placeholder="e.g. 3">
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Subscription Type</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-layer-group"></i>
-                        <select name="subscription_type" required>
-                            <option value="0" {% if form_data and form_data.subscription_type == '0' %}selected{% endif %}>Basic</option>
-                            <option value="1" {% if form_data and form_data.subscription_type == '1' %}selected{% endif %}>Standard</option>
-                            <option value="2" {% if form_data and form_data.subscription_type == '2' %}selected{% endif %}>Premium</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Contract Length</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-file-contract"></i>
-                        <select name="contract_length" required>
-                            <option value="0" {% if form_data and form_data.contract_length == '0' %}selected{% endif %}>Monthly</option>
-                            <option value="1" {% if form_data and form_data.contract_length == '1' %}selected{% endif %}>Annual</option>
-                            <option value="2" {% if form_data and form_data.contract_length == '2' %}selected{% endif %}>Quarterly</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Total Spend ($)</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-dollar-sign"></i>
-                        <input type="number" name="total_spend" step="0.01" min="0" required value="{{ form_data.total_spend if form_data else '' }}" placeholder="e.g. 500.00">
-                    </div>
-                </div>
-
-                <div class="input-group">
-                    <label>Last Interaction (Days)</label>
-                    <div class="input-wrapper">
-                        <i class="fa-solid fa-handshake"></i>
-                        <input type="number" name="last_interaction" step="1" min="0" required value="{{ form_data.last_interaction if form_data else '' }}" placeholder="e.g. 10">
-                    </div>
-                </div>
-
-            </div>
-
-            <button type="submit" class="btn-submit">
-                <i class="fa-solid fa-bolt"></i> Run Risk Prediction
-            </button>
-        </form>
+<div class="container">
+    <div class="header">
+        <h1>Customer Churn Predictor</h1>
+        <p>AdaBoost Classification Inference Engine</p>
     </div>
+
+    <form id="predictionForm">
+        <div class="form-grid">
+            <div class="input-group">
+                <label for="age">Age</label>
+                <input type="number" id="age" name="Age" placeholder="e.g. 30" required min="18" max="100">
+            </div>
+
+            <div class="input-group">
+                <label for="gender">Gender</label>
+                <select id="gender" name="Gender" required>
+                    <option value="0">Female</option>
+                    <option value="1">Male</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="tenure">Tenure (Months)</label>
+                <input type="number" id="tenure" name="Tenure" placeholder="e.g. 12" required min="0">
+            </div>
+
+            <div class="input-group">
+                <label for="usage">Usage Frequency</label>
+                <input type="number" id="usage" name="Usage Frequency" placeholder="e.g. 15" required min="0">
+            </div>
+
+            <div class="input-group">
+                <label for="calls">Support Calls</label>
+                <input type="number" id="calls" name="Support Calls" placeholder="e.g. 2" required min="0">
+            </div>
+
+            <div class="input-group">
+                <label for="delay">Payment Delay (Days)</label>
+                <input type="number" id="delay" name="Payment Delay" placeholder="e.g. 5" required min="0">
+            </div>
+
+            <div class="input-group">
+                <label for="subscription">Subscription Type</label>
+                <select id="subscription" name="Subscription Type" required>
+                    <option value="0">Basic</option>
+                    <option value="1">Standard</option>
+                    <option value="2">Premium</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="contract">Contract Length</label>
+                <select id="contract" name="Contract Length" required>
+                    <option value="0">Monthly</option>
+                    <option value="1">Quarterly</option>
+                    <option value="2">Annual</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="spend">Total Spend ($)</label>
+                <input type="number" step="0.01" id="spend" name="Total Spend" placeholder="e.g. 450.50" required min="0">
+            </div>
+
+            <div class="input-group">
+                <label for="interaction">Last Interaction (Days ago)</label>
+                <input type="number" id="interaction" name="Last Interaction" placeholder="e.g. 10" required min="0">
+            </div>
+
+            <button type="submit" class="submit-btn">Predict Churn Risk</button>
+        </div>
+    </form>
+
+    <div id="resultBox" class="result-container">
+        <div id="resultTitle" class="result-title"></div>
+        <div id="resultDesc" class="result-desc"></div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('predictionForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const data = {};
+        formData.forEach((value, key) => { data[key] = parseFloat(value); });
+
+        try {
+            const response = await fetch('/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            const resultBox = document.getElementById('resultBox');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultDesc = document.getElementById('resultDesc');
+
+            resultBox.classList.remove('churn', 'no-churn', 'show');
+
+            if (result.error) {
+                resultTitle.innerText = "Error";
+                resultDesc.innerText = result.error;
+                resultBox.classList.add('churn', 'show');
+                return;
+            }
+
+            if (result.prediction === 1) {
+                resultTitle.innerText = "High Risk of Churn";
+                resultDesc.innerText = "This customer is likely to cancel their subscription based on usage patterns.";
+                resultBox.classList.add('churn');
+            } else {
+                resultTitle.innerText = "Low Risk of Churn";
+                resultDesc.innerText = "This customer is likely to maintain an active subscription.";
+                resultBox.classList.add('no-churn');
+            }
+
+            resultBox.classList.add('show');
+        } catch (err) {
+            console.error(err);
+            alert("Prediction failed. Make sure Flask server is running.");
+        }
+    });
+</script>
 
 </body>
 </html>
 """
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'GET':
-        return render_template_string(HTML_TEMPLATE)
+@app.route('/')
+def home():
+    return render_template_string(HTML_TEMPLATE)
 
+@app.route('/predict', methods=['POST'])
+def predict():
     if model is None:
-        return render_template_string(
-            HTML_TEMPLATE,
-            error=f"Model file '{MODEL_FILENAME}' could not be loaded."
-        )
+        return jsonify({'error': 'Model file Adaboost_model.pkl not loaded.'}), 500
 
     try:
-        # Extract the exact feature fields defined in your model pickle
-        age = float(request.form.get('age', 0))
-        gender = int(request.form.get('gender', 0))
-        tenure = float(request.form.get('tenure', 0))
-        usage_frequency = float(request.form.get('usage_frequency', 0))
-        support_calls = float(request.form.get('support_calls', 0))
-        payment_delay = float(request.form.get('payment_delay', 0))
-        subscription_type = int(request.form.get('subscription_type', 0))
-        contract_length = int(request.form.get('contract_length', 0))
-        total_spend = float(request.form.get('total_spend', 0))
-        last_interaction = float(request.form.get('last_interaction', 0))
+        data = request.json
+        # Extract features in the exact sequence expected by AdaBoost
+        features = [
+            float(data['Age']),
+            float(data['Gender']),
+            float(data['Tenure']),
+            float(data['Usage Frequency']),
+            float(data['Support Calls']),
+            float(data['Payment Delay']),
+            float(data['Subscription Type']),
+            float(data['Contract Length']),
+            float(data['Total Spend']),
+            float(data['Last Interaction'])
+        ]
 
-        features = np.array([[
-            age, gender, tenure, usage_frequency, support_calls,
-            payment_delay, subscription_type, contract_length,
-            total_spend, last_interaction
-        ]])
-
-        prediction = model.predict(features)[0]
-
-        probability = None
-        if hasattr(model, "predict_proba"):
-            probs = model.predict_proba(features)[0]
-            probability = round(float(np.max(probs)) * 100, 2)
-
-        return render_template_string(
-            HTML_TEMPLATE,
-            prediction=int(prediction),
-            probability=probability,
-            form_data=request.form
-        )
+        prediction = model.predict([features])[0]
+        return jsonify({'prediction': int(prediction)})
 
     except Exception as e:
-        return render_template_string(HTML_TEMPLATE, error=str(e))
+        return jsonify({'error': str(e)}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
